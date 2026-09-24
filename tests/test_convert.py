@@ -203,6 +203,20 @@ async def test_large_amount_keeps_exact_json_numbers() -> None:
     assert payload["result"] == Decimal("4712340000000000.47")
 
 
+async def test_large_product_rounds_only_at_the_final_cent() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=upstream_payload(rate=100000000.5))
+
+    params = {**DEFAULT_PARAMS, "amount": "800000000000000000.01"}
+    async with client_for(handler) as client:
+        response = await client.get("/tools/convert", params=params)
+
+    assert response.status_code == 200
+    assert response.json(parse_float=Decimal)["result"] == Decimal(
+        "80000000400000000001000000.01"
+    )
+
+
 async def test_rate_outside_calculation_range_uses_error_envelope() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=upstream_payload(rate=1000000000000))

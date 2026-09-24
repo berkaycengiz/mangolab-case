@@ -5,7 +5,7 @@ import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import date
-from decimal import Decimal, DecimalException, ROUND_HALF_UP
+from decimal import Decimal, DecimalException, ROUND_HALF_UP, localcontext
 from typing import Annotated
 
 import httpx
@@ -100,9 +100,14 @@ def create_app(
         service: FxService = request.app.state.fx_service
         quote = await service.get_rate(base_currency, target_currency, asked_date)
         try:
-            result = (amount * quote.rate).quantize(
-                MONEY_QUANTUM, rounding=ROUND_HALF_UP
-            )
+            with localcontext() as context:
+                # Keep the product exact; round only once at the monetary result.
+                context.prec = len(amount.as_tuple().digits) + len(
+                    quote.rate.as_tuple().digits
+                )
+                product = amount * quote.rate
+                context.prec = 28
+                result = product.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
         except DecimalException as exc:
             raise ToolError(
                 502,
